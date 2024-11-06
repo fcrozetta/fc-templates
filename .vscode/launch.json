@@ -5,16 +5,60 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "(lldb) Launch",
+            "name": "Debug",
             "type": "cppdbg",
             "request": "launch",
-            "program": "enter program name, for example ${workspaceFolder}/a.out",
+            "program": "${workspaceFolder}/dist/${workspaceFolderBasename}.exe",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${fileDirname}",
+            "cwd": "${workspaceFolder}",
             "environment": [],
             "externalConsole": false,
-            "MIMode": "lldb"
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": false
+                }
+            ],
+            "windows": {
+                "miDebuggerPath": "gdb.exe",
+            },
+            "osx": {
+                "program": "${workspaceFolder}/dist/${workspaceFolderBasename}",
+                "MIMode": "lldb"
+            },
+            "linux": {
+                "program": "${workspaceFolder}/dist/${workspaceFolderBasename}",
+                "miDebuggerPath": "/usr/bin/gdb",
+            },
+            "preLaunchTask": "build debug"
+        },
+        {
+            "name": "Run",
+            "type": "cppdbg",
+            "request": "launch",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "program": "${workspaceFolder}/bin/Release/${workspaceFolderBasename}.exe",
+            "MIMode": "gdb",
+            "windows": {
+                "program": "${workspaceFolder}/bin/Release/${workspaceFolderBasename}.exe",
+                "miDebuggerPath": "gdb.exe"
+            },
+            "osx": {
+                "program": "${workspaceFolder}/bin/Release/${workspaceFolderBasename}",
+                "MIMode": "lldb"
+            },
+            "linux": {
+                "program": "${workspaceFolder}/bin/Release/${workspaceFolderBasename}",
+                "miDebuggerPath": "/usr/bin/gdb"
+            },
+            "preLaunchTask": "build release",
         }
     ]
 }
