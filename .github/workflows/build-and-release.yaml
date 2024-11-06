@@ -1,0 +1,138 @@
+name: Build, Sign, and Release Cross-Platform Executables
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - "*.*.*" # Trigger on version tags like v1.0.0
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: Deploy
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Release Version
+        id: vars
+        run: echo "RELEASE_TAG=${GITHUB_REF##*/}" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          release_name: Release ${{ env.RELEASE_TAG }}
+          draft: false
+          prerelease: false
+
+  build-macos:
+    runs-on: macos-latest
+    needs: release
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Decode and Import .p12 Certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MAC_CERTIFICATE }}
+          CERT_PASSWORD: ${{ secrets.CERT_PASSWORD }}
+        run: |
+          echo "$MACOS_CERTIFICATE" | base64 --decode > macos_cert.p12
+          security import macos_cert.p12 -k ~/Library/Keychains/login.keychain -P "$CERT_PASSWORD" -T /usr/bin/codesign
+
+      - name: Install Dependencies
+        run: brew install make raylib
+
+      - name: Build macOS Application
+        run: make BUILD=release
+
+      - name: Code Sign macOS Application
+        env:
+          CODE_SIGN_IDENTITY: "Developer ID Application: Your Name (TEAMID)"
+        run: |
+          codesign --force --sign "$CODE_SIGN_IDENTITY" --options runtime dist/fc-templates.app
+          codesign --verify --verbose=4 dist/fc-templates.app
+
+      - name: Package macOS App for Notarization
+        run: zip -r fc-templates-macos.zip dist/fc-templates.app
+
+      - name: Notarize macOS App
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APP_STORE_CONNECT_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+        run: |
+          echo "$APP_STORE_CONNECT_KEY" | base64 --decode > AuthKey.p8
+          xcrun notarytool submit fc-templates-macos.zip --key AuthKey.p8 --key-id ${{ secrets.APP_STORE_CONNECT_KEY_ID }} --issuer ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }} --wait
+
+      - name: Upload macOS App as Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.release.outputs.upload_url }}
+          asset_path: fc-templates-macos.zip
+          asset_name: "fc-templates-macos.zip"
+          asset_content_type: application/zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    needs: release
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y make g++ raylib
+
+      - name: Build Linux Application
+        run: make BUILD=release
+
+      - name: Package Linux Executable
+        run: zip -j fc-templates-linux.zip dist/fc-templates
+
+      - name: Upload Linux Executable as Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.release.outputs.upload_url }}
+          asset_path: fc-templates-linux.zip
+          asset_name: "fc-templates-linux.zip"
+          asset_content_type: application/zip
+
+  build-windows:
+    runs-on: windows-latest
+    needs: release
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install Dependencies
+        run: choco install make mingw raylib
+
+      - name: Build Windows Application
+        run: make BUILD=release
+
+      - name: Package Windows Executable
+        run: powershell Compress-Archive -Path dist\fc-templates.exe -DestinationPath fc-templates-windows.zip
+
+      - name: Upload Windows Executable as Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.release.outputs.upload_url }}
+          asset_path: fc-templates-windows.zip
+          asset_name: "fc-templates-windows.zip"
+          asset_content_type: application/zip
